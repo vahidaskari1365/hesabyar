@@ -18,7 +18,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -26,6 +25,7 @@ import {
   Building2,
   Sun,
   Moon,
+  Monitor,
   Database,
   Info,
   CheckCircle2,
@@ -61,7 +61,7 @@ const FEATURES = [
 
 // ─── بخش تنظیمات ────────────────────────────────────────────────
 export default function SettingsSection() {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dash, setDash] = useState<DashboardData | null>(null);
@@ -221,7 +221,7 @@ export default function SettingsSection() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between rounded-xl border bg-muted/40 p-4">
+            <div className="rounded-xl border bg-muted/40 p-4">
               <div className="flex items-center gap-3">
                 <div
                   className={cn(
@@ -232,17 +232,43 @@ export default function SettingsSection() {
                   {isDark ? <Moon className="size-5" aria-hidden /> : <Sun className="size-5" aria-hidden />}
                 </div>
                 <div>
-                  <p className="text-sm font-semibold">حالت تاریک</p>
+                  <p className="text-sm font-semibold">انتخاب تم</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {isDark ? "تم تاریک فعال است" : "تم روشن فعال است"}
+                    تم روشن، تاریک یا هماهنگ با سیستم را انتخاب کنید
                   </p>
                 </div>
               </div>
-              <Switch
-                checked={isDark}
-                onCheckedChange={(v) => setTheme(v ? "dark" : "light")}
-                aria-label="سوییچ حالت تاریک"
-              />
+              <div
+                role="radiogroup"
+                aria-label="انتخاب تم"
+                className="mt-4 grid grid-cols-3 gap-2"
+              >
+                {[
+                  { value: "light", label: "روشن", icon: Sun },
+                  { value: "dark", label: "تاریک", icon: Moon },
+                  { value: "system", label: "سیستم", icon: Monitor },
+                ].map((opt) => {
+                  const active = mounted && theme === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setTheme(opt.value)}
+                      className={cn(
+                        "flex flex-col items-center gap-1.5 rounded-lg border-2 p-3 text-xs font-medium transition-all",
+                        active
+                          ? "border-primary bg-primary/5 text-primary"
+                          : "border-transparent bg-background text-muted-foreground hover:border-border hover:text-foreground"
+                      )}
+                    >
+                      <opt.icon className="size-4.5" aria-hidden />
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </CardContent>
         </Card>

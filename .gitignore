@@ -52,3 +52,10 @@ prompt
 server.log
 # Skills directory
 /skills/
+# hesabyar
+.env
+db/
+*.db
+.verify/
+tool-results/
+download/

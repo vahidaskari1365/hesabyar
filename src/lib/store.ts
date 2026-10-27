@@ -9,6 +9,7 @@ export type SectionId =
   | "accounts"
   | "contacts"
   | "invoices"
+  | "processes"
   | "reports"
   | "report-builder"
   | "ai-insights"

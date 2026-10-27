@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, LayoutDashboard, ListTree, Receipt, Users, BarChart3, Settings2, FileText, ScanLine, Sparkles, Settings } from "lucide-react";
+import { ChevronDown, LayoutDashboard, ListTree, Receipt, Users, BarChart3, Settings2, FileText, ScanLine, Sparkles, Settings, Workflow } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAppStore, type SectionId } from "@/lib/store";
 import { Logo } from "@/components/shared/logo";
@@ -24,6 +24,7 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
       { id: "entries", label: "اسناد حسابداری", icon: FileText },
       { id: "smart-scan", label: "اسکن هوشمند", icon: ScanLine, ai: true },
       { id: "invoices", label: "فاکتورها", icon: Receipt },
+      { id: "processes", label: "فرآیندها و اتوماسیون", icon: Workflow },
     ],
   },
   {

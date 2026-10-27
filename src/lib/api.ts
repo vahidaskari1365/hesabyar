@@ -42,6 +42,8 @@ import type {
   DocScanResult,
   AIInsight,
   SavedReportItem,
+  ProcessesResponse,
+  ProcessResult,
 } from "./types";
 
 export const endpoints = {
@@ -84,4 +86,7 @@ export const endpoints = {
   insights: () => api.get<AIInsight[]>("/api/ai/insights"),
   chat: (messages: { role: string; content: string }[]) =>
     api.post<{ reply: string }>("/api/ai/chat", { messages }),
+
+  processes: () => api.get<ProcessesResponse>("/api/processes"),
+  runProcess: (processId: string) => api.post<ProcessResult>("/api/processes", { processId }),
 };

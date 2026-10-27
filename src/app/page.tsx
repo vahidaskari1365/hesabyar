@@ -1,17 +1,25 @@
 "use client";
 
-import { Menu, Moon, Sun, Sparkles } from "lucide-react";
+import { useState } from "react";
+import { Check, Menu, Monitor, Moon, Sparkles, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useAppStore } from "@/lib/store";
 import { SidebarNav } from "@/components/shared/sidebar-nav";
 import { AIAssistant } from "@/components/shared/ai-assistant";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import DashboardSection from "@/components/sections/dashboard-section";
 import EntriesSection from "@/components/sections/entries-section";
 import SmartScanSection from "@/components/sections/smart-scan-section";
 import AccountsSection from "@/components/sections/accounts-section";
 import ContactsSection from "@/components/sections/contacts-section";
 import InvoicesSection from "@/components/sections/invoices-section";
+import ProcessesSection from "@/components/sections/processes-section";
 import ReportsSection from "@/components/sections/reports-section";
 import ReportBuilderSection from "@/components/sections/report-builder-section";
 import AIInsightsSection from "@/components/sections/ai-insights-section";
@@ -24,29 +32,54 @@ const PAGE_TITLES: Record<string, string> = {
   accounts: "کدینگ حساب‌ها",
   contacts: "طرف‌های حساب",
   invoices: "فاکتورها",
+  processes: "فرآیندها و اتوماسیون",
   reports: "گزارش‌های مالی",
   "report-builder": "گزارش‌ساز",
   "ai-insights": "تحلیل هوشمند",
   settings: "تنظیمات",
 };
 
+const THEME_OPTIONS = [
+  { value: "light", label: "روشن", icon: Sun },
+  { value: "dark", label: "تاریک", icon: Moon },
+  { value: "system", label: "سیستم", icon: Monitor },
+] as const;
+
 function ThemeToggle() {
-  const { setTheme } = useTheme();
-  // آیکون‌ها با CSS سوییچ می‌شوند تا hydration mismatch رخ ندهد
+  const { theme, setTheme } = useTheme();
+  // بررسی نشانه‌ی انتخاب فقط پس از باز شدن منو — بدون hydration mismatch
+  const [snapshot, setSnapshot] = useState<string | null>(null);
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="size-9 rounded-lg"
-      onClick={() => {
-        const isDark = document.documentElement.classList.contains("dark");
-        setTheme(isDark ? "light" : "dark");
+    <DropdownMenu
+      onOpenChange={(open) => {
+        if (open) setSnapshot(theme ?? "system");
       }}
-      aria-label="تغییر تم روشن/تاریک"
     >
-      <Sun className="size-4.5 dark:hidden" />
-      <Moon className="hidden size-4.5 dark:block" />
-    </Button>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-9 rounded-lg"
+          aria-label="انتخاب تم روشن/تاریک/سیستم"
+        >
+          <Sun className="size-4.5 dark:hidden" />
+          <Moon className="hidden size-4.5 dark:block" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-36">
+        {THEME_OPTIONS.map((opt) => (
+          <DropdownMenuItem
+            key={opt.value}
+            onClick={() => setTheme(opt.value)}
+            className="flex items-center gap-2"
+          >
+            <opt.icon className="size-4 text-muted-foreground" />
+            <span className="flex-1">{opt.label}</span>
+            {snapshot === opt.value && <Check className="size-4 text-primary" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -94,6 +127,7 @@ export default function Home() {
             {section === "accounts" && <AccountsSection />}
             {section === "contacts" && <ContactsSection />}
             {section === "invoices" && <InvoicesSection />}
+            {section === "processes" && <ProcessesSection />}
             {section === "reports" && <ReportsSection />}
             {section === "report-builder" && <ReportBuilderSection />}
             {section === "ai-insights" && <AIInsightsSection />}

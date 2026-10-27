@@ -219,6 +219,57 @@ export interface SavedReportItem {
   createdAt: string;
 }
 
+// ─── فرآیندها و اتوماسیون ────────────────────────────────────────
+
+export interface ProcessMetric {
+  label: string;
+  value: string;
+  hint?: string;
+}
+
+export interface ProcessItem {
+  label: string;
+  value: number;
+  hint?: string;
+  status?: "ok" | "warn" | "error";
+}
+
+export interface ProcessStep {
+  id: string;
+  title: string;
+  status: "ok" | "warn" | "error" | "fixed" | "info";
+  message: string;
+  metrics?: ProcessMetric[];
+  items?: ProcessItem[];
+}
+
+export type ProcessCategory = "automation" | "ai" | "audit" | "system";
+
+export interface ProcessDefinition {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: ProcessCategory;
+  danger?: boolean;
+  memoryOnly?: boolean;
+  steps: string[];
+}
+
+export interface ProcessResult {
+  processId: string;
+  name: string;
+  startedAt: string;
+  durationMs: number;
+  success: boolean;
+  steps: ProcessStep[];
+}
+
+export interface ProcessesResponse {
+  mode: "database" | "memory";
+  processes: ProcessDefinition[];
+}
+
 export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   ASSET: "دارایی",
   LIABILITY: "بدهی",
