@@ -185,3 +185,23 @@ Work Log:
 
 Stage Summary:
 - همه جریان‌های طلایی مرورگر-تأیید شدند؛ بدون خطای runtime در dev.log
+
+---
+Task ID: 9
+Agent: main (Z.ai Code)
+Task: اجرای بدون دیتابیس، موتور فرآیندها، انتخاب تم، انتشار روی گیت‌هاب
+
+Work Log:
+- src/lib/server/memory.ts: موتور داده درون‌حافظه سازگار با زیرمجموعه Prisma (findMany/findUnique/create/update/upsert/delete/deleteMany/count/aggregate) با where کامل (OR/AND/NOT/in/gte/lte/contains/روابط some)، orderBy تودرتو، include/select شکل‌دهی، cascade/setNull، و seed تکرارپذیر معادل prisma/seed.ts (۱۱۲ سند) — با تست E2E اسکریپتی (همه پاس)
+- src/lib/db.ts: تعویض خودکار Prisma ↔ حافظه (پروب setting.count با timeout ۳ ثانیه، MEMORY_DB=1 برای اجبار، getDbKind/resetIfMemory) — کاهش log نویزی به error
+- /api/processes: ۶ فرآیند اجرایی واقعی — close-month (قطعی‌سازی پیش‌نویس + استهلاک + خلاصه ماه)، sync-invoices (تولید سند برای فاکتورهای بدون سند)، collect-receivables (سنی‌سازی مطالبات + توصیه)، audit (تراز/تهی/تکرار/کدینگ/VAT/امتیاز سلامت)، ai-advisor (KPI + روند + الگو + توصیه)، reset-demo (فقط حافظه)
+- processes-section.tsx + nav «فرآیندها و اتوماسیون» + types/api/store — کارت‌ها، دیالوگ اجرای مرحله‌ای انیمیشنی، متریک‌ها، آیتم‌های نوار درصدی، تاریخچه اجرا، CTA ناوبری
+- تم: هدر → DropdownMenu سه‌حالته (روشن/تاریک/سیستم) بدون hydration mismatch؛ تنظیمات → radiogroup سه‌حالته
+- راستی‌آزمایی مرورگری: داشبورد، اجرای ممیزی/تحلیل‌هوشمند در UI، باز شدن جزئیات مراحل، تم تاریک/روشن، موبایل ۳۹۰px، فوتر چسبان؛ معادلات حسابداری با curl: تراز آزمایشی ۱۷٫۶B=۱۷٫۶B، ترازنامه A=L+E=۵٫۴۶B ✓
+- آماده‌سازی ریپو: README فارسی، .env.example، gitignore (db/، *.db، .verify، tool-results)، حذف .env و db از index
+- push موفق به https://github.com/vahidaskari1365/hesabyar.git (branch main) — توکن فقط یک‌بارمصرف در URL push و ذخیره نشد
+
+Stage Summary:
+- برنامه بدون هیچ دیتابیسی بالا می‌آید (حالت حافظه با داده نمونه) و با DATABASE_URL به SQLite سوئیچ می‌شود
+- ۶ فرآیند واقعی قابل اجرا روی داده؛ گزارش‌ها تراز و صحت‌سنجی‌شده؛ تم سه‌حالته فعال
+- توکن گیت‌هاب کاربر در چت لو رفته — باید revoke شود
