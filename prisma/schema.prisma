@@ -1,0 +1,128 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// کدینگ حساب‌ها (Chart of Accounts)
+// ─────────────────────────────────────────────
+model Account {
+  id        String    @id @default(cuid())
+  code      String    @unique
+  name      String
+  // ASSET | LIABILITY | EQUITY | INCOME | EXPENSE
+  type      String
+  isGroup   Boolean   @default(false)
+  parentId  String?
+  parent    Account?  @relation("AccountTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Account[] @relation("AccountTree")
+  lines     JournalLine[]
+  createdAt DateTime  @default(now())
+}
+
+// ─────────────────────────────────────────────
+// اسناد حسابداری (سند روزنامه)
+// ─────────────────────────────────────────────
+model JournalEntry {
+  id          String        @id @default(cuid())
+  number      Int           @unique
+  date        DateTime
+  description String
+  // DRAFT | POSTED
+  status      String        @default("DRAFT")
+  // MANUAL | AI_SUGGESTION | SCAN | INVOICE
+  source      String        @default("MANUAL")
+  aiNote      String?
+  contactId   String?
+  contact     Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  lines       JournalLine[]
+  invoice     Invoice?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model JournalLine {
+  id          String       @id @default(cuid())
+  entryId     String
+  entry       JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId   String
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  debit       Float        @default(0)
+  credit      Float        @default(0)
+  description String       @default("")
+  order       Int          @default(0)
+}
+
+// ─────────────────────────────────────────────
+// طرف‌های حساب (مشتری / تأمین‌کننده)
+// ─────────────────────────────────────────────
+model Contact {
+  id        String        @id @default(cuid())
+  name      String
+  // CUSTOMER | SUPPLIER | BOTH
+  type      String        @default("CUSTOMER")
+  phone     String?
+  email     String?
+  taxId     String?
+  entries   JournalEntry[]
+  invoices  Invoice[]
+  createdAt DateTime      @default(now())
+}
+
+// ─────────────────────────────────────────────
+// فاکتور فروش / خرید
+// ─────────────────────────────────────────────
+model Invoice {
+  id         String        @id @default(cuid())
+  number     Int           @unique
+  // SALES | PURCHASE
+  type       String
+  contactId  String
+  contact    Contact       @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  date       DateTime
+  status     String        @default("FINAL") // DRAFT | FINAL
+  items      InvoiceItem[]
+  total      Float         @default(0)
+  taxRate    Float         @default(10)
+  taxAmount  Float         @default(0)
+  grandTotal Float         @default(0)
+  entryId    String?       @unique
+  entry      JournalEntry? @relation(fields: [entryId], references: [id])
+  notes      String?
+  createdAt  DateTime      @default(now())
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Float   @default(1)
+  unitPrice   Float   @default(0)
+  total       Float   @default(0)
+}
+
+// ─────────────────────────────────────────────
+// گزارش‌های ذخیره‌شده گزارش‌ساز
+// ─────────────────────────────────────────────
+model SavedReport {
+  id        String   @id @default(cuid())
+  name      String
+  config    String // JSON: dataset, groupBy, metric, chartType, dateFrom, dateTo
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// تنظیمات شرکت
+// ─────────────────────────────────────────────
+model Setting {
+  id          String @id @default("main")
+  companyName String @default("شرکت نمونه‌های حسابداری برتر")
+  fiscalYear  String @default("1404")
+  taxRate     Float  @default(10)
+  currency    String @default("تومان")
+}

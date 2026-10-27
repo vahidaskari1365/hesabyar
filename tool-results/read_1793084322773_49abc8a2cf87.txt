@@ -1,0 +1,729 @@
+     1→"use client";
+     2→
+     3→import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+     4→import { toast } from "sonner";
+     5→import {
+     6→  BarChart3 as BarChartIcon,
+     7→  BookOpen,
+     8→  Download,
+     9→  FileText,
+    10→  Landmark,
+    11→  LineChart as LineChartIcon,
+    12→  PieChart as PieChartIcon,
+    13→  Printer,
+    14→  Scale,
+    15→  TrendingUp,
+    16→  Wallet,
+    17→} from "lucide-react";
+    18→import type { LucideIcon } from "lucide-react";
+    19→import {
+    20→  Bar,
+    21→  BarChart,
+    22→  CartesianGrid,
+    23→  Cell,
+    24→  Legend,
+    25→  Line,
+    26→  LineChart,
+    27→  Pie,
+    28→  PieChart,
+    29→  ResponsiveContainer,
+    30→  Tooltip as RTooltip,
+    31→  XAxis,
+    32→  YAxis,
+    33→} from "recharts";
+    34→import { endpoints } from "@/lib/api";
+    35→import { useAppStore } from "@/lib/store";
+    36→import type { AccountDTO, ReportData } from "@/lib/types";
+    37→import { faCompact, faDate, faNumber } from "@/lib/format";
+    38→import { CHART_COLORS, PIE_COLORS, axisTick, compactTick, tooltipStyle } from "@/lib/charts";
+    39→import { cn } from "@/lib/utils";
+    40→import { EmptyState, SectionShell } from "@/components/shared/section-shell";
+    41→import { ChartCard } from "@/components/shared/chart-card";
+    42→import { Badge } from "@/components/ui/badge";
+    43→import { Button } from "@/components/ui/button";
+    44→import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+    45→import { Input } from "@/components/ui/input";
+    46→import { Label } from "@/components/ui/label";
+    47→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+    48→import { Skeleton } from "@/components/ui/skeleton";
+    49→import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+    50→import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    51→import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+    52→
+    53→// ─── انواع و ثوابت ───────────────────────────────────────────────
+    54→
+    55→type ReportType =
+    56→  | "trial-balance"
+    57→  | "income-statement"
+    58→  | "balance-sheet"
+    59→  | "general-ledger"
+    60→  | "journal-book";
+    61→
+    62→interface ReportMeta {
+    63→  type: ReportType;
+    64→  label: string;
+    65→  icon: LucideIcon;
+    66→  chartTitle?: string;
+    67→  chartSubtitle?: string;
+    68→}
+    69→
+    70→const REPORTS: ReportMeta[] = [
+    71→  {
+    72→    type: "trial-balance",
+    73→    label: "تراز آزمایشی",
+    74→    icon: Scale,
+    75→    chartTitle: "ده حساب پرگردش",
+    76→    chartSubtitle: "بدهکار و بستانکار کنار هم",
+    77→  },
+    78→  {
+    79→    type: "income-statement",
+    80→    label: "سود و زیان",
+    81→    icon: TrendingUp,
+    82→    chartTitle: "مهم‌ترین حساب‌های درآمد و هزینه",
+    83→    chartSubtitle: "به تفکیک مبلغ",
+    84→  },
+    85→  {
+    86→    type: "balance-sheet",
+    87→    label: "ترازنامه",
+    88→    icon: Landmark,
+    89→    chartTitle: "ترکیب دارایی‌ها",
+    90→    chartSubtitle: "سهم هر دارایی از کل",
+    91→  },
+    92→  {
+    93→    type: "general-ledger",
+    94→    label: "دفتر کل",
+    95→    icon: BookOpen,
+    96→    chartTitle: "گردش ماهانه حساب",
+    97→    chartSubtitle: "خالص بدهکار منهای بستانکار",
+    98→  },
+    99→  { type: "journal-book", label: "دفتر روزنامه", icon: FileText },
+   100→];
+   101→
+   102→type StatTone = "primary" | "warning" | "destructive" | "muted" | "success";
+   103→
+   104→interface ReportStat {
+   105→  label: string;
+   106→  value: string;
+   107→  sub?: string;
+   108→  icon: LucideIcon;
+   109→  tone: StatTone;
+   110→  badge?: { text: string; className: string };
+   111→}
+   112→
+   113→const TONE_CLASS: Record<StatTone, string> = {
+   114→  primary: "bg-primary/10 text-primary",
+   115→  warning: "bg-warning/15 text-warning",
+   116→  destructive: "bg-destructive/10 text-destructive",
+   117→  muted: "bg-muted text-muted-foreground",
+   118→  success: "bg-success/10 text-success",
+   119→};
+   120→
+   121→// ─── توابع کمکی ──────────────────────────────────────────────────
+   122→
+   123→/** تبدیل رشته فارسی/لاتین عدد به number (برای جمع ستون‌ها) */
+   124→function parseFa(v: string | number | null | undefined): number {
+   125→  if (typeof v === "number") return v;
+   126→  if (!v) return 0;
+   127→  const n = Number(
+   128→    v
+   129→      .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+   130→      .replace(/[^\d.-]/g, "")
+   131→  );
+   132→  return Number.isNaN(n) ? 0 : n;
+   133→}
+   134→
+   135→function csvEscape(v: string | number): string {
+   136→  const s = String(v ?? "");
+   137→  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+   138→}
+   139→
+   140→function downloadCsv(data: ReportData) {
+   141→  const lines: string[] = [data.columns.map(csvEscape).join(",")];
+   142→  for (const row of data.rows) lines.push(row.map(csvEscape).join(","));
+   143→  if (data.totals) lines.push(data.totals.map(csvEscape).join(","));
+   144→  const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+   145→  const url = URL.createObjectURL(blob);
+   146→  const a = document.createElement("a");
+   147→  a.href = url;
+   148→  a.download = `${data.title || "گزارش"}.csv`;
+   149→  document.body.appendChild(a);
+   150→  a.click();
+   151→  a.remove();
+   152→  URL.revokeObjectURL(url);
+   153→  toast.success("خروجی CSV با موفقیت دانلود شد");
+   154→}
+   155→
+   156→function kindIcon(kind: "bar" | "pie" | "line" | "waterfall" | "none"): LucideIcon {
+   157→  if (kind === "pie") return PieChartIcon;
+   158→  if (kind === "line") return LineChartIcon;
+   159→  return BarChartIcon;
+   160→}
+   161→
+   162→// ─── نمودار گزارش ────────────────────────────────────────────────
+   163→
+   164→function ReportChart({ chart }: { chart: NonNullable<ReportData["chart"]> }) {
+   165→  if (!chart.data?.length) {
+   166→    return (
+   167→      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+   168→        داده‌ای برای نمایش نمودار وجود ندارد
+   169→      </div>
+   170→    );
+   171→  }
+   172→
+   173→  if (chart.kind === "pie") {
+   174→    return (
+   175→      <ResponsiveContainer width="100%" height="100%">
+   176→        <PieChart>
+   177→          <Pie
+   178→            data={chart.data}
+   179→            dataKey="value"
+   180→            nameKey="name"
+   181→            innerRadius="52%"
+   182→            outerRadius="82%"
+   183→            paddingAngle={2}
+   184→            stroke="var(--card)"
+   185→            strokeWidth={2}
+   186→          >
+   187→            {chart.data.map((d, i) => (
+   188→              <Cell key={`${d.name}-${i}`} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+   189→            ))}
+   190→          </Pie>
+   191→          <RTooltip {...tooltipStyle} formatter={(v) => faCompact(Number(v))} />
+   192→          <Legend wrapperStyle={{ fontSize: 11 }} iconSize={9} />
+   193→        </PieChart>
+   194→      </ResponsiveContainer>
+   195→    );
+   196→  }
+   197→
+   198→  if (chart.kind === "line") {
+   199→    return (
+   200→      <ResponsiveContainer width="100%" height="100%">
+   201→        <LineChart data={chart.data} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+   202→          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+   203→          <XAxis dataKey="name" tick={axisTick} tickLine={false} axisLine={{ stroke: "var(--border)" }} interval={0} />
+   204→          <YAxis tick={axisTick} tickLine={false} axisLine={false} tickFormatter={compactTick} width={48} />
+   205→          <RTooltip {...tooltipStyle} formatter={(v) => faNumber(Number(v))} cursor={{ stroke: "var(--border)" }} />
+   206→          <Line
+   207→            type="monotone"
+   208→            dataKey="value"
+   209→            name="خالص گردش"
+   210→            stroke={CHART_COLORS[0]}
+   211→            strokeWidth={2.5}
+   212→            dot={{ r: 3, strokeWidth: 0, fill: CHART_COLORS[0] }}
+   213→            activeDot={{ r: 5 }}
+   214→          />
+   215→        </LineChart>
+   216→      </ResponsiveContainer>
+   217→    );
+   218→  }
+   219→
+   220→  // bar — اگر نام‌ها بلندند چیدمان افقی (ستون‌های افقی با برچسب راست)
+   221→  const hasExtra = chart.data.some((d) => typeof d.extra === "number");
+   222→  const longNames = chart.data.some((d) => d.name.length > 10);
+   223→
+   224→  if (longNames) {
+   225→    return (
+   226→      <ResponsiveContainer width="100%" height="100%">
+   227→        <BarChart data={chart.data} layout="vertical" margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+   228→          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+   229→          <XAxis type="number" tick={axisTick} tickLine={false} axisLine={false} tickFormatter={compactTick} />
+   230→          <YAxis
+   231→            type="category"
+   232→            dataKey="name"
+   233→            width={140}
+   234→            tick={axisTick}
+   235→            tickLine={false}
+   236→            axisLine={false}
+   237→            orientation="right"
+   238→          />
+   239→          <RTooltip {...tooltipStyle} formatter={(v) => faNumber(Number(v))} cursor={{ fill: "var(--accent)", fillOpacity: 0.35 }} />
+   240→          {hasExtra ? (
+   241→            <>
+   242→              <Bar dataKey="value" name="بدهکار" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} barSize={9} />
+   243→              <Bar dataKey="extra" name="بستانکار" fill={CHART_COLORS[1]} radius={[0, 4, 4, 0]} barSize={9} />
+   244→            </>
+   245→          ) : (
+   246→            <Bar dataKey="value" name="مبلغ" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} barSize={14} />
+   247→          )}
+   248→          {hasExtra && <Legend wrapperStyle={{ fontSize: 11 }} iconSize={9} />}
+   249→        </BarChart>
+   250→      </ResponsiveContainer>
+   251→    );
+   252→  }
+   253→
+   254→  return (
+   255→    <ResponsiveContainer width="100%" height="100%">
+   256→      <BarChart data={chart.data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+   257→        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+   258→        <XAxis dataKey="name" tick={axisTick} tickLine={false} axisLine={{ stroke: "var(--border)" }} interval={0} />
+   259→        <YAxis tick={axisTick} tickLine={false} axisLine={false} tickFormatter={compactTick} width={48} />
+   260→        <RTooltip {...tooltipStyle} formatter={(v) => faNumber(Number(v))} cursor={{ fill: "var(--accent)", fillOpacity: 0.35 }} />
+   261→        <Bar dataKey="value" name="مبلغ" fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} barSize={26} />
+   262→      </BarChart>
+   263→    </ResponsiveContainer>
+   264→  );
+   265→}
+   266→
+   267→// ─── کارت خلاصه ──────────────────────────────────────────────────
+   268→
+   269→function ReportStatCard({
+   270→  stat,
+   271→  onClick,
+   272→  index,
+   273→}: {
+   274→  stat: ReportStat;
+   275→  onClick: () => void;
+   276→  index: number;
+   277→}) {
+   278→  return (
+   279→    <button
+   280→      type="button"
+   281→      onClick={onClick}
+   282→      title="مشاهده جدول گزارش"
+   283→      style={{ animationDelay: `${index * 60}ms` }}
+   284→      className="animate-rise rounded-xl border bg-card p-4 text-start shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+   285→    >
+   286→      <div className="flex items-start justify-between gap-2">
+   287→        <div className="min-w-0">
+   288→          <p className="text-xs font-medium text-muted-foreground">{stat.label}</p>
+   289→          <p className="tnum mt-1.5 truncate text-lg font-bold tracking-tight">{stat.value}</p>
+   290→          {stat.badge ? (
+   291→            <Badge variant="secondary" className={cn("mt-2", stat.badge.className)}>
+   292→              {stat.badge.text}
+   293→            </Badge>
+   294→          ) : (
+   295→            stat.sub && <p className="mt-1 truncate text-xs text-muted-foreground">{stat.sub}</p>
+   296→          )}
+   297→        </div>
+   298→        <div className={cn("flex size-10 shrink-0 items-center justify-center rounded-lg", TONE_CLASS[stat.tone])}>
+   299→          <stat.icon className="size-5" aria-hidden />
+   300→        </div>
+   301→      </div>
+   302→    </button>
+   303→  );
+   304→}
+   305→
+   306→// ─── بخش اصلی ────────────────────────────────────────────────────
+   307→
+   308→export default function ReportsSection() {
+   309→  const navigate = useAppStore((s) => s.navigate);
+   310→  const params = useAppStore((s) => s.params);
+   311→
+   312→  const [active, setActive] = useState<ReportType>("trial-balance");
+   313→  const [fromInput, setFromInput] = useState("");
+   314→  const [toInput, setToInput] = useState("");
+   315→  const [applied, setApplied] = useState({ from: "", to: "" });
+   316→  const [accountId, setAccountId] = useState("");
+   317→  const [accounts, setAccounts] = useState<AccountDTO[]>([]);
+   318→  const [data, setData] = useState<ReportData | null>(null);
+   319→  const [loading, setLoading] = useState(true);
+   320→  const tableRef = useRef<HTMLDivElement>(null);
+   321→
+   322→  // حساب‌ها برای انتخاب دفتر کل
+   323→  useEffect(() => {
+   324→    endpoints
+   325→      .accounts()
+   326→      .then(setAccounts)
+   327→      .catch(() => undefined);
+   328→  }, []);
+   329→
+   330→  // پارامترهای ناوبری: reportType / accountId
+   331→  useEffect(() => {
+   332→    if (params.accountId) {
+   333→      setAccountId(params.accountId);
+   334→      setActive("general-ledger");
+   335→    } else if (params.reportType && REPORTS.some((r) => r.type === params.reportType)) {
+   336→      setActive(params.reportType as ReportType);
+   337→    }
+   338→  }, [params]);
+   339→
+   340→  // اجرای گزارش فعال
+   341→  useEffect(() => {
+   342→    if (active === "general-ledger" && !accountId) {
+   343→      setData(null);
+   344→      setLoading(false);
+   345→      return;
+   346→    }
+   347→    let cancelled = false;
+   348→    setLoading(true);
+   349→    const p: Record<string, string> = {};
+   350→    if (applied.from) p.from = applied.from;
+   351→    if (applied.to) p.to = applied.to;
+   352→    if (active === "general-ledger") p.accountId = accountId;
+   353→    endpoints
+   354→      .reports(active, p)
+   355→      .then((d) => {
+   356→        if (!cancelled) {
+   357→          setData(d);
+   358→          setLoading(false);
+   359→        }
+   360→      })
+   361→      .catch((e: unknown) => {
+   362→        if (!cancelled) {
+   363→          toast.error(e instanceof Error ? e.message : "خطا در دریافت گزارش");
+   364→          setLoading(false);
+   365→        }
+   366→      });
+   367→    return () => {
+   368→      cancelled = true;
+   369→    };
+   370→  }, [active, applied, accountId]);
+   371→
+   372→  // حساب‌های برگ برای دفتر کل
+   373→  const leafAccounts = useMemo(() => {
+   374→    const out: AccountDTO[] = [];
+   375→    const walk = (list: AccountDTO[]) => {
+   376→      for (const a of list) {
+   377→        if (a.children?.length) walk(a.children);
+   378→        else if (!a.isGroup) out.push(a);
+   379→      }
+   380→    };
+   381→    walk(accounts);
+   382→    return out.sort((a, b) => a.code.localeCompare(b.code, "en"));
+   383→  }, [accounts]);
+   384→
+   385→  // کارت‌های خلاصه هر گزارش
+   386→  const stats: ReportStat[] = useMemo(() => {
+   387→    if (!data) return [];
+   388→    if (active === "trial-balance" && data.trial?.length) {
+   389→      const td = data.trial.reduce((s, r) => s + r.debit, 0);
+   390→      const tc = data.trial.reduce((s, r) => s + r.credit, 0);
+   391→      const diff = td - tc;
+   392→      return [
+   393→        { label: "جمع بدهکار", value: faCompact(td), icon: TrendingUp, tone: "primary" },
+   394→        { label: "جمع بستانکار", value: faCompact(tc), icon: Wallet, tone: "warning" },
+   395→        {
+   396→          label: "وضعیت تراز",
+   397→          value: faCompact(Math.abs(diff)),
+   398→          sub: "اختلاف جمع بدهکار و بستانکار",
+   399→          icon: Scale,
+   400→          tone: "muted",
+   401→          badge:
+   402→            diff === 0
+   403→              ? { text: "متراز است", className: "bg-success/10 text-success" }
+   404→              : { text: "تراز ندارد", className: "bg-destructive/10 text-destructive" },
+   405→        },
+   406→      ];
+   407→    }
+   408→    if (active === "income-statement") {
+   409→      const d2 = data.chart?.data2 ?? [];
+   410→      const rev = d2[0]?.value ?? 0;
+   411→      const exp = d2[1]?.value ?? 0;
+   412→      const net = d2[2]?.value ?? rev - exp;
+   413→      return [
+   414→        { label: "جمع درآمدها", value: faCompact(rev), icon: TrendingUp, tone: "success" },
+   415→        { label: "جمع هزینه‌ها", value: faCompact(exp), icon: Wallet, tone: "warning" },
+   416→        {
+   417→          label: net >= 0 ? "سود خالص دوره" : "زیان خالص دوره",
+   418→          value: faCompact(net),
+   419→          icon: Scale,
+   420→          tone: net >= 0 ? "primary" : "destructive",
+   421→        },
+   422→      ];
+   423→    }
+   424→    if (active === "balance-sheet") {
+   425→      const assets = (data.chart?.data ?? []).reduce((s, d) => s + d.value, 0);
+   426→      const d2 = data.chart?.data2 ?? [];
+   427→      return [
+   428→        { label: "جمع دارایی‌ها", value: faCompact(assets), icon: Wallet, tone: "primary" },
+   429→        { label: "جمع بدهی‌ها", value: faCompact(d2[0]?.value ?? 0), icon: Landmark, tone: "warning" },
+   430→        { label: "سرمایه و سود", value: faCompact(d2[1]?.value ?? 0), icon: Scale, tone: "muted" },
+   431→      ];
+   432→    }
+   433→    if (active === "general-ledger") {
+   434→      return [
+   435→        { label: "تعداد ردیف گردش", value: faNumber(data.rows.length), icon: BookOpen, tone: "muted" },
+   436→        { label: "جمع بدهکار", value: faCompact(parseFa(data.totals?.[4])), icon: TrendingUp, tone: "primary" },
+   437→        { label: "جمع بستانکار", value: faCompact(parseFa(data.totals?.[5])), icon: Wallet, tone: "warning" },
+   438→      ];
+   439→    }
+   440→    // دفتر روزنامه
+   441→    const entryCount = data.rows.filter((r) => String(r[1] ?? "").trim() !== "").length;
+   442→    return [
+   443→      { label: "تعداد اسناد", value: faNumber(entryCount), icon: FileText, tone: "muted" },
+   444→      { label: "جمع بدهکار", value: faCompact(parseFa(data.totals?.[5])), icon: TrendingUp, tone: "primary" },
+   445→      { label: "جمع بستانکار", value: faCompact(parseFa(data.totals?.[6])), icon: Wallet, tone: "warning" },
+   446→    ];
+   447→  }, [data, active]);
+   448→
+   449→  // ستون‌های عددی (برای tnum و راست‌چینی)
+   450→  const numericCols = useMemo(() => {
+   451→    const s = new Set<number>();
+   452→    if (!data) return s;
+   453→    data.columns.forEach((_, i) => {
+   454→      const sample = data.rows.slice(0, 12).map((r) => String(r[i] ?? ""));
+   455→      if (!sample.length) return;
+   456→      const numeric = sample.filter(
+   457→        (v) => /\d/.test(v) && !/[a-zA-Zآ-ی]/.test(v.replace(/[۰-۹]/g, ""))
+   458→      ).length;
+   459→      if (numeric / sample.length > 0.5) s.add(i);
+   460→    });
+   461→    return s;
+   462→  }, [data]);
+   463→
+   464→  const meta = REPORTS.find((r) => r.type === active) ?? REPORTS[0];
+   465→  const chart = data?.chart;
+   466→  const glMissing = active === "general-ledger" && !accountId && !loading;
+   467→  const rangeText =
+   468→    applied.from || applied.to
+   469→      ? `بازه: ${applied.from ? faDate(applied.from) : "ابتدای دوره"} تا ${applied.to ? faDate(applied.to) : "امروز"}`
+   470→      : "";
+   471→
+   472→  const scrollToTable = () => tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+   473→
+   474→  return (
+   475→    <SectionShell
+   476→      title="گزارش‌های مالی"
+   477→      icon={BarChartIcon}
+   478→      description="گزارش‌های استاندارد با نمودارهای تعاملی"
+   479→      actions={
+   480→        <>
+   481→          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => window.print()} disabled={!data}>
+   482→            <Printer className="size-4" aria-hidden />
+   483→            چاپ / PDF
+   484→          </Button>
+   485→          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => data && downloadCsv(data)} disabled={!data}>
+   486→            <Download className="size-4" aria-hidden />
+   487→            خروجی CSV
+   488→          </Button>
+   489→        </>
+   490→      }
+   491→    >
+   492→      {/* انتخاب گزارش و فیلترها */}
+   493→      <div className="no-print space-y-3">
+   494→        <div className="hidden sm:block">
+   495→          <Tabs value={active} onValueChange={(v) => setActive(v as ReportType)}>
+   496→            <TabsList className="h-auto w-full grid-cols-5 gap-1 p-1">
+   497→              {REPORTS.map((r) => (
+   498→                <TabsTrigger
+   499→                  key={r.type}
+   500→                  value={r.type}
+   501→                  className="gap-1.5 px-1 py-1.5 text-xs sm:text-[13px]"
+   502→                >
+   503→                  <r.icon className="size-4 shrink-0" aria-hidden />
+   504→                  <span className="truncate">{r.label}</span>
+   505→                </TabsTrigger>
+   506→              ))}
+   507→            </TabsList>
+   508→          </Tabs>
+   509→        </div>
+   510→        <div className="sm:hidden">
+   511→          <Select value={active} onValueChange={(v) => setActive(v as ReportType)}>
+   512→            <SelectTrigger className="w-full" aria-label="انتخاب گزارش">
+   513→              <SelectValue />
+   514→            </SelectTrigger>
+   515→            <SelectContent>
+   516→              {REPORTS.map((r) => (
+   517→                <SelectItem key={r.type} value={r.type}>
+   518→                  <span className="inline-flex items-center gap-2">
+   519→                    <r.icon className="size-4" aria-hidden />
+   520→                    {r.label}
+   521→                  </span>
+   522→                </SelectItem>
+   523→              ))}
+   524→            </SelectContent>
+   525→          </Select>
+   526→        </div>
+   527→
+   528→        <Card className="shadow-sm">
+   529→          <CardContent className="flex flex-wrap items-end gap-3 p-3 sm:p-4">
+   530→            <div className="space-y-1">
+   531→              <Label htmlFor="report-from" className="text-xs text-muted-foreground">
+   532→                از تاریخ
+   533→              </Label>
+   534→              <Input
+   535→                id="report-from"
+   536→                type="date"
+   537→                value={fromInput}
+   538→                onChange={(e) => setFromInput(e.target.value)}
+   539→                className="h-9 w-36 tnum sm:w-40"
+   540→              />
+   541→            </div>
+   542→            <div className="space-y-1">
+   543→              <Label htmlFor="report-to" className="text-xs text-muted-foreground">
+   544→                تا تاریخ
+   545→              </Label>
+   546→              <Input
+   547→                id="report-to"
+   548→                type="date"
+   549→                value={toInput}
+   550→                onChange={(e) => setToInput(e.target.value)}
+   551→                className="h-9 w-36 tnum sm:w-40"
+   552→              />
+   553→            </div>
+   554→            <Button size="sm" className="h-9" onClick={() => setApplied({ from: fromInput, to: toInput })}>
+   555→              اعمال
+   556→            </Button>
+   557→            <Button
+   558→              size="sm"
+   559→              variant="ghost"
+   560→              className="h-9"
+   561→              onClick={() => {
+   562→                setFromInput("");
+   563→                setToInput("");
+   564→                setApplied({ from: "", to: "" });
+   565→              }}
+   566→            >
+   567→              پاک‌کردن
+   568→            </Button>
+   569→            {active === "general-ledger" && (
+   570→              <div className="min-w-52 flex-1 space-y-1 sm:max-w-72">
+   571→                <Label className="text-xs text-muted-foreground">حساب (الزامی)</Label>
+   572→                <Select value={accountId} onValueChange={setAccountId}>
+   573→                  <SelectTrigger className="h-9 w-full">
+   574→                    <SelectValue placeholder="انتخاب حساب…" />
+   575→                  </SelectTrigger>
+   576→                  <SelectContent>
+   577→                    {leafAccounts.map((a) => (
+   578→                      <SelectItem key={a.id} value={a.id}>
+   579→                        {a.code} — {a.name}
+   580→                      </SelectItem>
+   581→                    ))}
+   582→                  </SelectContent>
+   583→                </Select>
+   584→              </div>
+   585→            )}
+   586→          </CardContent>
+   587→        </Card>
+   588→      </div>
+   589→
+   590→      {/* کارت‌های خلاصه */}
+   591→      {loading ? (
+   592→        <div className="grid gap-3 sm:grid-cols-3">
+   593→          <Skeleton className="h-[92px] rounded-xl" />
+   594→          <Skeleton className="h-[92px] rounded-xl" />
+   595→          <Skeleton className="h-[92px] rounded-xl" />
+   596→        </div>
+   597→      ) : (
+   598→        stats.length > 0 && (
+   599→          <div className="grid gap-3 sm:grid-cols-3">
+   600→            {stats.map((s, i) => (
+   601→              <ReportStatCard key={s.label} stat={s} index={i} onClick={scrollToTable} />
+   602→            ))}
+   603→          </div>
+   604→        )
+   605→      )}
+   606→
+   607→      {/* نمودار گزارش */}
+   608→      {meta.type !== "journal-book" && (loading || chart) && (
+   609→        <ChartCard
+   610→          title={meta.chartTitle ?? "نمودار گزارش"}
+   611→          subtitle={meta.chartSubtitle}
+   612→          icon={chart ? kindIcon(chart.kind) : BarChartIcon}
+   613→          height={300}
+   614→          loading={loading}
+   615→        >
+   616→          {chart ? <ReportChart chart={chart} /> : <div className="h-full w-full" />}
+   617→        </ChartCard>
+   618→      )}
+   619→
+   620→      {/* پیام انتخاب حساب برای دفتر کل */}
+   621→      {glMissing && (
+   622→        <EmptyState
+   623→          icon={BookOpen}
+   624→          title="حسابی انتخاب نشده است"
+   625→          text="برای مشاهده دفتر کل، ابتدا یک حساب از فهرست «حساب (الزامی)» در نوار بالا انتخاب کنید."
+   626→        />
+   627→      )}
+   628→
+   629→      {/* جدول گزارش */}
+   630→      {!glMissing && (loading || data) && (
+   631→        <Card className="overflow-hidden shadow-sm">
+   632→          <CardHeader className="pb-3">
+   633→            <div className="flex flex-wrap items-end justify-between gap-2">
+   634→              <div>
+   635→                <CardTitle className="text-base">{data?.title ?? meta.label}</CardTitle>
+   636→                {data?.subtitle && (
+   637→                  <p className="mt-0.5 text-xs text-muted-foreground">{data.subtitle}</p>
+   638→                )}
+   639→              </div>
+   640→              {rangeText && <p className="tnum text-xs text-muted-foreground">{rangeText}</p>}
+   641→            </div>
+   642→          </CardHeader>
+   643→          <CardContent className="pt-0">
+   644→            {loading ? (
+   645→              <div className="space-y-2">
+   646→                {Array.from({ length: 6 }).map((_, i) => (
+   647→                  <Skeleton key={i} className="h-9 w-full" />
+   648→                ))}
+   649→              </div>
+   650→            ) : data && data.rows.length === 0 ? (
+   651→              <EmptyState
+   652→                icon={FileText}
+   653→                title="داده‌ای یافت نشد"
+   654→                text="در بازه انتخابی، تراکنشی برای این گزارش وجود ندارد."
+   655→                className="border-0 bg-transparent"
+   656→              />
+   657→            ) : data ? (
+   658→              <div
+   659→                ref={tableRef}
+   660→                className="max-h-96 overflow-x-auto overflow-y-auto rounded-lg border print:max-h-none print:overflow-visible"
+   661→              >
+   662→                <Table>
+   663→                  <TableHeader className="sticky top-0 z-10 bg-card shadow-[0_1px_0_var(--border)]">
+   664→                    <TableRow className="hover:bg-transparent">
+   665→                      {data.columns.map((c) => (
+   666→                        <TableHead key={c} className="text-right font-bold text-foreground/80">
+   667→                          {c}
+   668→                        </TableHead>
+   669→                      ))}
+   670→                    </TableRow>
+   671→                  </TableHeader>
+   672→                  <TableBody>
+   673→                    {data.rows.map((row, ri) => {
+   674→                      const trialRow = data.trial?.[ri];
+   675→                      const cells = row.map((cell, ci) => (
+   676→                        <TableCell
+   677→                          key={ci}
+   678→                          className={cn(
+   679→                            "text-right",
+   680→                            numericCols.has(ci) ? "tnum" : "min-w-40 whitespace-normal",
+   681→                            String(cell) === "—" && "text-muted-foreground/60"
+   682→                          )}
+   683→                        >
+   684→                          {String(cell)}
+   685→                        </TableCell>
+   686→                      ));
+   687→                      if (!trialRow) {
+   688→                        return (
+   689→                          <Fragment key={ri}>
+   690→                            <TableRow>{cells}</TableRow>
+   691→                          </Fragment>
+   692→                        );
+   693→                      }
+   694→                      return (
+   695→                        <Tooltip key={ri}>
+   696→                          <TooltipTrigger asChild>
+   697→                            <TableRow
+   698→                              onClick={() => navigate("accounts", { accountId: trialRow.accountId })}
+   699→                              className="cursor-pointer hover:bg-accent/50"
+   700→                            >
+   701→                              {cells}
+   702→                            </TableRow>
+   703→                          </TooltipTrigger>
+   704→                          <TooltipContent>مشاهده دفتر کل حساب</TooltipContent>
+   705→                        </Tooltip>
+   706→                      );
+   707→                    })}
+   708→                  </TableBody>
+   709→                  {data.totals && (
+   710→                    <TableFooter className="bg-muted font-bold">
+   711→                      <TableRow className="hover:bg-muted">
+   712→                        {data.totals.map((cell, i) => (
+   713→                          <TableCell key={i} className={cn("text-right", numericCols.has(i) && "tnum")}>
+   714→                            {String(cell)}
+   715→                          </TableCell>
+   716→                        ))}
+   717→                      </TableRow>
+   718→                    </TableFooter>
+   719→                  )}
+   720→                </Table>
+   721→              </div>
+   722→            ) : null}
+   723→          </CardContent>
+   724→        </Card>
+   725→      )}
+   726→    </SectionShell>
+   727→  );
+   728→}
+   729→
